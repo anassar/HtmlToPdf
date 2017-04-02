@@ -5,20 +5,19 @@ use warnings;
 
 use Data::Dumper;
 use HTML::TreeBuilder 5 -weak; # Ensure weak references in use
-
+use File::Copy;
 
 # USAGE:
 # cd ~/TensorFlowPdfDocs
 # perl ../workspace/tensorFlowDocsToPdf.pl
 
 my $baseURL  = 'https://www.tensorflow.org/api_docs';
-my $docsDir  = '/home/anassar/TensorFlowPdfDocs';
+my $docsDir  = '/home/anassar/TensorFlowPdfDocs/';
 
-my $maxDepth = 20;
 
-my $CombineFilesOnly = 1;
+my $ParseHtml = 0;
 
-if (not $CombineFilesOnly) {
+if ($ParseHtml) {
 	my $treeRoot = HTML::TreeBuilder->new_from_url($baseURL);
 	$treeRoot->elementify();
 
@@ -31,10 +30,17 @@ if (not $CombineFilesOnly) {
 	processList( $largestList, 'Tensor Flow API r1.0 Documentation', $docsDir, '' );
 }
 
+
+
+my $devDocs = getDeveloperDocs();
+processDevDocsList( $devDocs, $docsDir, '' );
+
+
 my $dstDirPath = '/home/anassar/TensorFlowPdfDocs_';
 mkdir $dstDirPath;
 my $count = 0;
-combinePDFs( $docsDir, 'TensorFlowPdfDocs', $dstDirPath, \$count );
+combinePDFs( $docsDir, 'TensorFlowDeveloperDoc', $dstDirPath, \$count );
+
 
 
 
@@ -53,13 +59,16 @@ sub combinePDFs {
 				push @outfiles, $newFile;
 			}
 		} else {
-			push @outfiles, $path;
+			my $newPath = $path;
+			$newPath =~ s/\s+/_/g; # Replace whitespace with underscores.
+			rename( $path, $newPath );
+			push @outfiles, $newPath;
 		}
 	}
 	if ( scalar( @outfiles ) ) {
 		my $ofpath = "$dstDirPath/$srcDirName.pdf";
-		my $cmd = "gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -sOutputFile=$ofpath " . join( ' ', @outfiles );
-		#print "========== Executing:\n\t$cmd\n\n";
+		my $cmd = "gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -sOutputFile=$ofpath \\\n" . join( " \\\n", @outfiles );
+		print "========== Executing:\n\t$cmd\n\n";
 		my $ret = system( $cmd );
 		if ( $ret != 0 ) {
 			exit( $ret );
@@ -70,6 +79,37 @@ sub combinePDFs {
 	}
 	return undef;
 }
+
+
+
+sub processDevDocsList {
+	my ($list, $parentDir, $index) = @_;
+	my $title = $list->{title};
+	print "-- Processing list: $index.$title ($parentDir)\n";
+	$parentDir =~ s/\/$//;   # Remove trailing /.
+	$title     =~ s/\s+/_/g; # Replace whitespace with underscores.
+	if (exists $list->{contents}) {
+		my $currDir = "$parentDir/${index}";
+		if ( $index ne '' ) {
+			$currDir .= "_";
+		}
+		$currDir .= "$title";
+		mkdir $currDir;
+		my $count = 1;
+		foreach my $listItem ( @{ $list->{contents} } ) {
+			processDevDocsList( $listItem, $currDir, getSubIndex( $index, $count ) );
+			$count = $count + 1;
+		}
+	} elsif (exists $list->{url}) {
+		my $url = $list->{url};
+		my $fpath  = "$parentDir/${index}_$title.pdf";
+		convertUrlToPdf($url, $fpath);
+	} else {
+		die "*** Unrecognized DevDocsList structure.";
+	}
+}
+
+
 
 
 #===--------------------------------------------------===#
@@ -197,15 +237,6 @@ sub processHyperlink {
 		die "*** A hyperlink item must have only one sub-item.";
 	}
 	my $childElemRef = $contents[0];
-#	unless ( ref $$childElemRef ) {
-#		print Dumper($$childElemRef);
-#		die "*** A hyperlink item must have only one sub-item of ref type.";
-#	}
-#	my $tag = $$childElemRef->tag();
-#	if ( $tag ne 'span' ) {
-#		die "*** A hyperlink item must have only one sub-item of <span> type.";
-#	}
-#	my $title = getTitle( $$childElemRef );
 	if ( ref $$childElemRef ) {
 		#print Dumper($$childElemRef);
 		die "*** A hyperlink item must have only one sub-item of string type.";
@@ -268,10 +299,64 @@ sub getAllFiles {
 
 
 
-
-
-
+sub getDeveloperDocs {
+	return { title => 'TensorFlowDeveloperDocs', contents => [
+	{ title => 'Get_Started', contents => [
+	{title => 'Getting_Started_With_TensorFlow'                    , url => 'https://www.tensorflow.org/get_started/get_started'},
+	{title => 'MNIST For ML Beginners'                             , url => 'https://www.tensorflow.org/get_started/mnist/beginners'},
+	{title => 'Deep MNIST for Experts'                             , url => 'https://www.tensorflow.org/get_started/mnist/pros'},
+	{title => 'TensorFlow Mechanics 101'                           , url => 'https://www.tensorflow.org/get_started/mnist/mechanics'},
+	{title => 'tf.contrib.learn Quickstart'                        , url => 'https://www.tensorflow.org/get_started/tflearn'},
+	{title => 'Building Input Functions with tf.contrib.learn'     , url => 'https://www.tensorflow.org/get_started/input_fn'},
+	{title => 'TensorBoard_Visualizing Learning'                   , url => 'https://www.tensorflow.org/get_started/summaries_and_tensorboard'},
+	{title => 'TensorBoard_Embedding Visualization'                , url => 'https://www.tensorflow.org/get_started/embedding_viz'},
+	{title => 'TensorBoard_Graph Visualization'                    , url => 'https://www.tensorflow.org/get_started/graph_viz'},
+	{title => 'Logging and Monitoring Basics with tf.contrib.learn', url => 'https://www.tensorflow.org/get_started/monitors'},
+	]},
+	{ title => 'Programmers_Guide', contents => [
+	{ title => 'Reading data'                                                   , url => 'https://www.tensorflow.org/programmers_guide/reading_data'},
+	{ title => 'Threading and Queues'                                           , url => 'https://www.tensorflow.org/programmers_guide/threading_and_queues'},
+	{ title => 'Sharing Variables'                                              , url => 'https://www.tensorflow.org/programmers_guide/variable_scope'},
+	{ title => 'TensorFlow Version Semantics'                                   , url => 'https://www.tensorflow.org/programmers_guide/version_semantics'},
+	{ title => 'TensorFlow Data Versioning_GraphDefs and Checkpoints'           , url => 'https://www.tensorflow.org/programmers_guide/data_versions'},
+	{ title => 'Supervisor_Training Helper for Days-Long Trainings'             , url => 'https://www.tensorflow.org/programmers_guide/supervisor'},
+	{ title => 'TensorFlow Debugger_tfdbg_Command-Line-Interface Tutorial_MNIST', url => 'https://www.tensorflow.org/programmers_guide/debugger'},
+	{ title => 'How to Use TensorFlow Debugger_tfdbg_with tf.contrib.learn'     , url => 'https://www.tensorflow.org/programmers_guide/tfdbg-tflearn'},
+	{ title => 'Exporting and Importing a MetaGraph'                            , url => 'https://www.tensorflow.org/programmers_guide/meta_graph'},
+	{ title => 'Frequently Asked Questions'                                     , url => 'https://www.tensorflow.org/programmers_guide/faq'},
+	{ title => 'Tensor Ranks, Shapes, and Types'                                , url => 'https://www.tensorflow.org/programmers_guide/dims_types'},
+	{ title => 'Variables_Creation, Initialization, Saving, and Loading'        , url => 'https://www.tensorflow.org/programmers_guide/variables'},
+	]},
+	{ title => 'Tutorials', contents => [
+	{title => 'Mandelbrot Set'                                              , url => 'https://www.tensorflow.org/tutorials/mandelbrot'},
+	{title => 'Partial Differential Equations'                              , url => 'https://www.tensorflow.org/tutorials/pdes'},
+	{title => 'Convolutional Neural Networks'                               , url => 'https://www.tensorflow.org/tutorials/deep_cnn'},
+	{title => 'Image Recognition'                                           , url => 'https://www.tensorflow.org/tutorials/image_recognition'},
+	{title => 'How to Retrain Inception_s Final Layer for New Categories'   , url => 'https://www.tensorflow.org/tutorials/image_retraining'},
+	{title => 'Vector Representations of Words'                             , url => 'https://www.tensorflow.org/tutorials/word2vec'},
+	{title => 'Recurrent Neural Networks'                                   , url => 'https://www.tensorflow.org/tutorials/recurrent'},
+	{title => 'Sequence-to-Sequence Models'                                 , url => 'https://www.tensorflow.org/tutorials/seq2seq'},
+	{title => 'A Guide to TF Layers_Building a Convolutional Neural Network', url => 'https://www.tensorflow.org/tutorials/layers'},
+	{title => 'Large-scale Linear Models with TensorFlow'                   , url => 'https://www.tensorflow.org/tutorials/linear'},
+	{title => 'TensorFlow Linear Model Tutorial'                            , url => 'https://www.tensorflow.org/tutorials/wide'},
+	{title => 'TensorFlow Wide and Deep Learning Tutorial'                  , url => 'https://www.tensorflow.org/tutorials/wide_and_deep'},
+	{title => 'Using GPUs'                                                  , url => 'https://www.tensorflow.org/tutorials/using_gpu'},
+	]},
+	{ title => 'Performance', contents => [
+	    {title => 'Performance'                                    , url => 'https://www.tensorflow.org/performance/performance_guide'},
+	    {title => 'XLA Overview'                                   , url => 'https://www.tensorflow.org/performance/xla/'},
+	    {title => 'Broadcasting semantics'                         , url => 'https://www.tensorflow.org/performance/xla/broadcasting'},
+	    {title => 'Developing a new backend for XLA'               , url => 'https://www.tensorflow.org/performance/xla/developing_new_backend'},
+	    {title => 'Using JIT Compilation'                          , url => 'https://www.tensorflow.org/performance/xla/jit'},
+	    {title => 'Operation Semantics'                            , url => 'https://www.tensorflow.org/performance/xla/operation_semantics'},
+	    {title => 'Shapes and Layout'                              , url => 'https://www.tensorflow.org/performance/xla/shapes'},
+	    {title => 'Using AOT compilation'                          , url => 'https://www.tensorflow.org/performance/xla/tfcompile'},
+	    {title => 'How to Quantize Neural Networks with TensorFlow', url => 'https://www.tensorflow.org/performance/quantization'},
+	]},
+ 	]};
+}
 
 
 
 __END__
+
