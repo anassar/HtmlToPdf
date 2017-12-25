@@ -9,7 +9,7 @@ use File::Copy;
 
 # USAGE:
 # mkdir ~/UE4Docs
-# perl ~/workspace/UE4DocsToHtml.pl
+# perl ~/workspace/ue4DocsToPdf.pl
 
 my $docsDirName  = 'UE4Docs';
 my $docsDirPath  = '/home/anassar/' . $docsDirName;
@@ -18,7 +18,7 @@ my $baseURL      = 'https://docs.unrealengine.com';
 my $bookTitle    = 'UnrealEngine4Documentation';
 my $maxDepth     = -1;
 my $ParseHtml    =  1;
-my $startAtTitle = "Basic How To's"; # Title of node to start building.
+my $startAtTitle = undef; # "Basic How To's"; # Title of node to start building.
 
 
 if ($ParseHtml) {
@@ -119,6 +119,9 @@ sub processListItem {
 	$title     =~ s/[&]/and/g; # Replace ampersand with "and".
 	$title     =~ s/^(\s*\d+\s*-\s*)/and/g; # Replace section numbering.
 	$title     =~ s/'//g; # Replace apostrophes.
+	$title     =~ s/\(/_/g; # Replace parentheses.
+	$title     =~ s/\)/_/g; # Replace parentheses.
+	$title     =~ s/\//_/g; # Replace slashes.
 	my $currDir = undef;
 	if ($isDeep) {
 		$currDir = getPath($title, $parentDir, $index, '');
@@ -130,7 +133,9 @@ sub processListItem {
 	}
 	if ( $selected ) {
 		my $fpath = getPath($title, $currDir, $index, '.pdf');
-		convertUrlToPdf($url, $fpath);
+		if ( not -f $fpath ) { # Convert files that haven't been converted on previous runs.
+			convertUrlToPdf($url, $fpath);
+		}
 	}
 	if ( $isDeep ) {
 		my $sublistRef = $contents[1];
